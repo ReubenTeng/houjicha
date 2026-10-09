@@ -14,6 +14,20 @@ Source workflow: `/Users/reuben/Documents/groupcart.excalidraw`. The drawing des
 
 **Implementation status:** documentation and schema review only. No authenticated Reap requests, merchant purchases, or wallet mutations were performed. Documented support does not establish enablement for our project, merchant, country, currency, or card.
 
+## Reconciliation with the MCP handoff
+
+Baseline: commit `04cd7ce963067e506bf1427d9cdd7b25d437ea89`. The later [MCP handoff](./plans/mcp-handoff/README.md) and [payment-service handoff](./plans/payment-service-handoff/README.md) describe a wider product boundary, not replacements for Reap endpoint schemas or proof of provider enablement.
+
+The intended layering is **external agent / MCP adapter → orchestration → group-payment service → Reap adapter**. These are responsibility boundaries, not a requirement for four deployments. MCP calls orchestration's domain operations; it does not expose `ReapWrapper` methods as user payment tools. An authenticated HTTP service boundary may coexist with a typed in-process Reap adapter. Telegram is an optional adapter; the existing bot scaffold is not the group-buy engine.
+
+The TypeScript `ReapWrapper` remains the proposed provider-facing interface. The group-payment service additionally owns the funded-order workflow: participant collection, one merchant checkout, recovery, status and durable events. Its proposed `startGroupPayment` / `getGroupPayment` / `requestRecovery` operations are not aliases for `createCheckout` / `getCheckout` / `retryWalletDebit`.
+
+**Material incompatibility:** the v0.1 sequence in sections 3, 5 and 6 buys with one external-card enrollment, then debits separate virtual credits. The new product requires participant contributions before merchant checkout, unless a separately approved provider-native atomic flow is verified. Virtual `WITHDRAWAL` postings do not transfer funds to that external-card purchaser. The old sequence is therefore a documented legacy demo model, not an implementation of the new funding requirement. Do not move `debitWallet` earlier: its contract requires a completed checkout, and removing that guard would not create a collection/refund system. Selecting a permitted funding route, signer custody, fees and recovery requires project-specific confirmation before wiring the real funding flow or moving funds. Labeled contract mocks can proceed without provider access.
+
+The new handoff governs the MCP-first product direction, organizer role, matching, deadlines and membership rules. This document continues to govern the existing provider adapter's exact types, ownership checks, quote evidence, idempotency and unknown-outcome safety. The newer product requirements do not establish new Reap capabilities. Both contracts remain proposals; no group-payment implementation or provider integration is claimed.
+
+Compatibility rules are recorded in both handoff copies of `integration-contract.md`: retain string minor units, explicit internal merchant mappings, quote fingerprints, exact final debit amounts, caller-bound authorization and separate financial/order versions. The handoff's bounded-authorization policy is distinct from this document's exact-final-approval policy; a trusted grant validator must bridge it, not an agent's assertion of consent. Item-level prices, Reap-issued-card enrollment and participant-funded checkout remain evidence-gated. Merchant refunds remain distinct from recovering participant contributions.
+
 ## 1. The boundary to agree first
 
 **Engineer A — orchestration** owns Telegram identity/authentication, conversation, location and distance matching, open-order discovery, organiser selection, announcement, individual baskets, cutoff scheduling, cost allocation, participant approvals, local wallet reservations, order state, receipts, arrival confirmation and collection notifications. A decides whether a purchase is allowed.

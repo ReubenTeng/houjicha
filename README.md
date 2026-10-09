@@ -53,9 +53,16 @@ npm run typecheck
 
 ## Reap wrapper API reference
 
-The orchestration ↔ Reap boundary is defined in TypeScript. The documentation
+The provider-facing Reap adapter boundary is defined in TypeScript. The documentation
 uses expandable service functions, argument tables, return types and examples.
 It describes direct calls to an injected `ReapWrapper` TypeScript interface.
+
+The newer [MCP handoff](docs/plans/mcp-handoff/README.md) describes the outer
+orchestration interface; the [payment-service handoff](docs/plans/payment-service-handoff/README.md)
+describes a group-payment workflow above the provider adapter. Neither is implemented.
+The old external-card purchase followed by virtual-credit debits does not satisfy
+the newer participant-funded-before-checkout requirement. Read the reconciliation
+section in the engineering handoff before implementing either payment sequence.
 
 ```bash
 npm run docs:generate

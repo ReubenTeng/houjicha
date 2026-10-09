@@ -4,13 +4,21 @@ Read this before implementing either component. This is a self-contained snapsho
 
 ## Status and ownership
 
-The repository had documentation only when this handoff was prepared. The contracts in integration-contract.md are PROPOSED interfaces to agree with the orchestration owner, not endpoints that already exist. Implement against a labeled mock while that backend is being built.
+The repository contains a Telegram bot scaffold and a proposed TypeScript Reap-wrapper contract, but no implemented group-buy orchestration, MCP adapter or group-payment service. The contracts in integration-contract.md are PROPOSED interfaces to agree with the orchestration owner, not endpoints that already exist. Implement against a labeled mock while that backend is being built.
 
 - O1: Orchestration owns durable group-buy state, catalog/search interface, matching, membership, participant limits, approvals, deadlines, allocation, and domain events.
 - O2: MCP is a thin interface to orchestration. An external agent such as ChatGPT or another MCP-capable host performs conversation and invokes tools. No built-in agent, Telegram bot, or model SDK is required for the core.
 - O3: Payment service owns Reap/Kwal integration, participant funding, collection, merchant checkout, provider approval flows, reconciliation, and refunds. It may expose provider catalog/quote data to orchestration.
 - O4: A future Telegram adapter can use the same MCP tools. The core must not depend on Telegram chat IDs, message templates, MCP sessions, or any LLM.
 - O5: Orchestration enforces all business permissions and invariants. A model prompt is not an enforcement mechanism.
+
+## Relationship to the earlier Reap wrapper
+
+Commit `04cd7ce963067e506bf1427d9cdd7b25d437ea89` defines `docs/reap-wrapper-contract.ts` and `docs/reap-wrapper-api.md`. That contract is a lower-level provider adapter, not the MCP-facing domain API or the complete group-payment service. Keep it internal beneath payment/orchestration; the recommended HTTP transport here does not replace its TypeScript module interface.
+
+The earlier demo purchases with one external card and only then debits participant virtual credits; those credits do not reimburse the purchaser. R12 and provisional P1/P2 instead require actual participant funding before checkout and recovery for partial collection. This is a material change, not a method rename or a reason to remove `debitWallet`'s completed-checkout guard. The new product direction is the target; a verified collection/custody/fee/recovery route is still unresolved. Do not choose Program-Funded versus User-Funded, allocate test funds, or claim end-to-end payment success merely by combining the documents.
+
+Both documents already support different items from one merchant. MCP-first interaction, bounded authorization, collection-window constraints and pre-collection locking are changes or refinements at the orchestration/payment layer. Exact money, verified ownership, one merchant checkout, durable idempotency and conservative recovery remain shared requirements. The integration contract below records compatibility rules without claiming the broader flow is implemented.
 
 ## Agreed product rules
 
