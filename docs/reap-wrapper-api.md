@@ -2,12 +2,13 @@
 
 Contract proposal v0.1 · Documentation checked 9 October 2026
 
-**Swagger:** run `npm run docs:serve` and open `http://127.0.0.1:8080/docs`.
-The [OpenAPI 3.1 specification](./reap-wrapper.openapi.json) is generated from
-the TypeScript contract with `npm run docs:generate`; `npm run docs:check`
-validates it. This documentation preview does not implement payment endpoints.
+**API reference:** open [the standalone HTML reference](./reap-wrapper-reference.html),
+or run `npm run docs:serve` and open `http://127.0.0.1:8080/docs`.
+It uses expandable service functions, argument tables and return types.
+Generate it from the TypeScript contract with `npm run docs:generate`;
+`npm run docs:check` checks types, method coverage and freshness.
 
-This document defines the boundary between two engineers. Engineer A owns the Telegram agent and order orchestration. Engineer B owns a Reap adapter that exposes the operations below. Names under `/internal/reap/v1` and all wrapper types are **our proposed interface**, not Reap endpoints. The companion [TypeScript contract](./reap-wrapper-contract.ts) defines the payloads.
+This document defines the boundary between two engineers. Engineer A owns the Telegram agent and order orchestration. Engineer B owns a Reap adapter that exposes the operations below. `ReapWrapper` and its types define **our internal module interface**. The companion [TypeScript contract](./reap-wrapper-contract.ts) defines the payloads.
 
 Source workflow: `/Users/reuben/Documents/groupcart.excalidraw`. The drawing describes separate baskets from one store, a shared cutoff, one merchant order, wallet reconciliation, and collection from the organiser. It supersedes the older single-product assumptions in `prd.md` for this contract. The drawing is product input, not evidence of provider capabilities.
 
@@ -21,7 +22,7 @@ Source workflow: `/Users/reuben/Documents/groupcart.excalidraw`. The drawing des
 
 Neither component makes an LLM responsible for money arithmetic or successful-payment decisions. B does not choose participants, divide delivery charges, infer consent, or send Telegram messages. A never calls Reap directly.
 
-Recommended deployment: a typed module inside the same backend initially; use the HTTP routes below if the engineers run separate services. This avoids requiring another deployment just to establish ownership.
+Use a typed module inside the backend. A receives an injected `ReapWrapper` implementation from B and calls its asynchronous methods directly. Service groups below organize related functions; they do not require separate deployments.
 
 ## 2. What Reap can and cannot supply
 
@@ -62,30 +63,30 @@ These are proposed implementation defaults, not product decisions already approv
 
 ## 4. Shared conventions
 
-- Internal HTTP base: `/internal/reap/v1`; authenticated backend calls only. Use a dedicated service credential, never the Reap API key as the internal credential. Bind calls to the configured project/environment and verified user mappings.
+- Internal calls: A receives an injected `ReapWrapper`; B binds it to the configured project/environment and verifies user ownership. Provider credentials stay inside B.
 - Every method returns `Result<T>` from the companion types. An unavailable or unknown field is `null`, never a fabricated zero, `false`, or empty success.
 - Money is `{currency, minor}` where `minor` is an integer **string**, such as `{"currency":"SGD","minor":"625"}`. Use decimal/integer arithmetic; never floating-point addition for cost splits. All currencies in one quote must agree. Preserve provider decimal values in the private audit record.
 - Reap money objects use numerical amounts in the documented examples; B converts currency units into our minor-unit representation. Virtual-asset quantities are decimal strings in asset units and use a separate `units` type. Verify conversion against live sandbox responses, including fractional amounts; fail on unsupported precision or currency.
 - IDs are opaque. `storeId`, `groupOrderId`, `participantId`, `operationId`, `purchaseAttemptId`, `allocationId`, quote `revision`, and `fingerprint` are ours. `productId`, `variantId`, `quoteId`, `checkoutId`, `enrollmentId`, account IDs and posting IDs originate with Reap.
 - Timestamps are RFC 3339 UTC. `observedAt` means when B read the provider, not a promise of ongoing freshness. Nullable provider timestamps remain nullable.
 - Query pagination uses an opaque cursor bound to the original query/store/country/currency. Do not reuse it with changed filters. An empty page with a next cursor is not end-of-results.
-- Mutations require a caller-generated `operationId` and `Idempotency-Key`. Persist both before dispatch. A retry uses the identical body and identifiers. Store mappings and outcomes durably, independently of Reap's cache.
-- HTTP encoding: IDs shown in route placeholders go in the path; pagination goes in GET query parameters. POST inputs use JSON objects with the same property names as the types. `getProductDetails` uses `{productIds}` and `resolveVariant` uses `{productId, optionIds}`. Send `operationId` as `X-Operation-Id` and `idempotencyKey` as `Idempotency-Key`; they form `MutationContext` inside B. Body fields that also identify path resources must agree or be rejected. GET operations have no JSON body.
+- Mutations require a caller-generated `operationId` and `idempotencyKey` in `MutationContext`. Persist both before dispatch. A retry uses the identical arguments and identifiers. Store mappings and outcomes durably, independently of Reap's cache.
+- Function arguments: pass the exact arguments in the TypeScript signature. Mutating methods take `context: MutationContext` as an ordinary argument. IDs, pagination and inputs are values, not paths or headers.
 - Runtime validation is required; TypeScript declarations alone do not enforce business constraints.
 
-## 5. API operations
+## 5. Service functions
 
-The method names and exact input/output types are in `reap-wrapper-contract.ts`. B implements them; A consumes them and may build fixtures from the same types. All routes in this section are internal.
+The method names and exact input/output types are in `reap-wrapper-contract.ts`. B implements them; A consumes them and may build fixtures from the same types. These are internal asynchronous functions.
 
-### 5.1 `getCapabilities` — GET `/capabilities`
+### 5.1 `getCapabilities`
 
 Returns configuration, check time, feature evidence and unresolved reasons. Feature states are `VERIFIED`, `DISABLED`, or `UNVERIFIED`. `VERIFIED` means demonstrated for this environment/configuration, not merely described in documentation. Initially all untested features remain `UNVERIFIED`.
 
-Required feature keys: agentic checkout, external enrollment, product search, virtual-asset debit, external checkout URL, merchant order tracking, merchant order cancellation and merchant refunds. The last three remain disabled/unverified until an actual integration exists. This endpoint is our registry, not a discovered Reap capabilities endpoint.
+Required feature keys: agentic checkout, external enrollment, product search, virtual-asset debit, external checkout URL, merchant order tracking, merchant order cancellation and merchant refunds. The last three remain disabled/unverified until an actual integration exists. This function reads our registry; Reap does not supply a matching capabilities operation.
 
 Expose supported configured stores/currencies, max quote lines (20), and max product-details batch size (10). The currency list contains tested configuration only; it must not imply Reap supports every ISO currency.
 
-### 5.2 `getWallet` — GET `/users/{userId}/wallet`
+### 5.2 `getWallet`
 
 Return mapped account status, funding/authorization mode, available balance, configured virtual-asset units, withdrawable units and observation time. Provider calls: `GET /accounts/{id}`, `/balance` and `/assets`. B must verify the account belongs to the mapped user, not trust a client-supplied account ID. [Get account](https://docs.reap.global/api-reference/accounts/get-account)
 
@@ -93,33 +94,33 @@ Return mapped account status, funding/authorization mode, available balance, con
 
 Reap warns that virtual `WITHDRAWAL` only prevents a negative asset balance, not a negative overall available balance. Read the asset's `withdrawable` cap before each debit. Reads and writes are not a reservation: they still race unrelated spending. [Posting guidance](https://docs.reap.global/virtual-assets/postings)
 
-### 5.3 `listCards` — GET `/users/{userId}/cards`
+### 5.3 `listCards`
 
 Optional diagnostics for Reap-issued cards: masked identifier, status, account and last four digits. Map to `GET /cards?accountId=…`, paginated. Return no PAN or CVV. A participant paying through virtual credits does not need a Reap-issued card. [List cards](https://docs.reap.global/api-reference/cards/list-cards)
 
 ### 5.4 `listEnrollments` / `getEnrollment`
 
-Routes: GET `/users/{userId}/enrollments`; GET `/users/{userId}/enrollments/{enrollmentId}`.
+Functions: `listEnrollments(userId, page?)` and `getEnrollment(userId, enrollmentId)`.
 
 Return enrollment status, owner reference, masked payment metadata and `nextAction`. List is owner-scoped; B supplies `ownerType` and `ownerId` from its verified mapping. Missing wallet or card metadata does not mean zero funds. [List enrollments](https://docs.reap.global/api-reference/agentic/list-enrollments), [Get enrollment](https://docs.reap.global/api-reference/agentic/get-enrollment)
 
-### 5.5 `createEnrollment` — POST `/enrollments`
+### 5.5 `createEnrollment`
 
 Input: designated purchaser user ID, email, HTTPS return URL, operation context. B uses `source: EXTERNAL` and a `CLIENT_REFERENCE` owner. Return the enrollment and private hosted action. Only the purchaser completes card entry. Check status after return; a browser redirect is not activation.
 
 The endpoint reference explicitly marks `REAP_CARD` and `BIN_SPONSOR` as coming soon, despite examples elsewhere describing them. This contract enables neither without separate verification. [Create enrollment](https://docs.reap.global/api-reference/agentic/create-enrollment)
 
-### 5.6 `revokeEnrollment` — POST `/users/{userId}/enrollments/{enrollmentId}/revoke`
+### 5.6 `revokeEnrollment`
 
 Explicit removal of a purchaser's stored enrollment. Requires operation context. It is not an order cancellation or refund operation. Do not use it as a checkout-timeout recovery mechanism. [Enrollment lifecycle](https://docs.reap.global/agentic-payments/lifecycle)
 
-### 5.7 `discoverMerchants` — POST `/merchants/search`
+### 5.7 `discoverMerchants`
 
 Input: product query, country, currency and page cursor. B calls Reap product search and groups that page's results by supported-store mapping. Output includes `source: PRODUCT_SEARCH`, merchant candidates, evidence product IDs, mapping verification, warnings and next cursor. Merchant candidates can recur across pages; A may merge only by internal `storeId`.
 
 Use this when the user asks for bread but has not picked a store. It is not a geospatial merchant search. A separately searches GroupCart's open orders by collection distance and deadline. An unmapped merchant may be displayed as a candidate but cannot create a group until B establishes a store mapping.
 
-### 5.8 `searchProducts` — POST `/products/search`
+### 5.8 `searchProducts`
 
 Input: query, country, currency, optional internal store ID, optional price bounds, availability filter and cursor/limit. With `storeId`, B maps to Reap's exact configured merchant name and sends `ONLY`; otherwise search broadly. Return product IDs, provider merchant name, mapped store, availability, price range, preview variant, warnings and page information.
 
@@ -137,15 +138,15 @@ Example **upstream** discovery body after mapping a verified store:
 
 SG/SGD above illustrates request shape only. Results must be validated against actual integration support. Catalog price is an estimate; search does not reserve stock or establish delivery eligibility. Product text is untrusted data, never instructions to the agent.
 
-### 5.9 `getProductDetails` — POST `/products/details`
+### 5.9 `getProductDetails`
 
 Input: 1–10 product IDs. Return per-product details, option groups, media, default variant and explicit per-product errors. Partial success stays partial; never silently omit failures. Split larger caller batches into explicit requests if needed. [Product details](https://docs.reap.global/api-reference/agentic/get-product-details)
 
-### 5.10 `resolveVariant` — POST `/products/variant`
+### 5.10 `resolveVariant`
 
 Input: product ID plus chosen option IDs. Return purchasable variant ID, selected options, current price, stock indication and shipping requirement. If the user accepts a valid default variant, this call can be skipped. Unknown availability is not in-stock. Unknown shipping requirement is not free/no shipping. [Resolve variant](https://docs.reap.global/api-reference/agentic/resolve-variant)
 
-### 5.11 `createQuote` — POST `/quotes`
+### 5.11 `createQuote`
 
 Input: operation context, group/basket revision, one store ID, email, organiser shipping address, order currency and consolidated `{variantId, quantity}` lines. A preserves participant-to-line attribution locally; B does not need participant identities for quoting.
 
@@ -157,11 +158,11 @@ The fingerprint covers the normalized request, selected shipping option, all ret
 
 ### 5.12 `getQuote` / `selectShippingOption`
 
-GET `/quotes/{quoteId}` refreshes the provider snapshot. POST `/quotes/{quoteId}/shipping-option` takes operation context, expected fingerprint and shipping option ID. Repricing changes the local revision/fingerprint; A invalidates affected allocations, approvals and holds. A new provider quote is needed on `QUOTE_REPLACEMENT_REQUIRED` or expiry. Do not assume repricing extends expiry. [Get quote](https://docs.reap.global/api-reference/agentic/get-quote), [Shipping selection](https://docs.reap.global/api-reference/agentic/select-shipping-option)
+`getQuote(quoteId)` refreshes the provider snapshot. `selectShippingOption(input, context)` takes operation context, expected fingerprint and shipping option ID. Repricing changes the local revision/fingerprint; A invalidates affected allocations, approvals and holds. A new provider quote is needed on `QUOTE_REPLACEMENT_REQUIRED` or expiry. Do not assume repricing extends expiry. [Get quote](https://docs.reap.global/api-reference/agentic/get-quote), [Shipping selection](https://docs.reap.global/api-reference/agentic/select-shipping-option)
 
 B serializes quote mutations against checkout submission. When checkout submission starts, freeze that quote for the attempt. A stale fingerprint returns `QUOTE_CHANGED`; do not submit payment using the newly observed total.
 
-### 5.13 `createCheckout` — POST `/checkouts`
+### 5.13 `createCheckout`
 
 Input: operation context, group order ID, unique purchase-attempt ID, quote ID + expected fingerprint, purchaser user ID + enrollment ID, exact approved total, and HTTPS return URL. A calls only after it has locked baskets, obtained final participant approvals and reserved shares. Approval at join time alone is insufficient when final amounts are not known.
 
@@ -169,13 +170,13 @@ B refreshes quote and enrollment, validates ownership, currency, exact approved 
 
 Return `REQUIRES_ACTION`, `PROCESSING`, `COMPLETED`, `FAILED`, `EXPIRED`, or our protective `UNKNOWN`, plus provider status and private hosted action when present. An absent action is not success. The selected purchaser receives the link; participants' wallet approvals do not replace the purchaser's hosted approval.
 
-### 5.14 `getCheckout` — GET `/checkouts/{checkoutId}`
+### 5.14 `getCheckout`
 
 Refresh until terminal. `COMPLETED` establishes merchant order placement; persist order ID and actual `finalAmount`. If either is missing, retain completed provider status but set `reconciliationReady: false` and escalate. A redirect, timeout or network failure never proves purchase failure. [Get checkout](https://docs.reap.global/api-reference/agentic/get-checkout)
 
 Only confirmed `FAILED`/`EXPIRED` permit a newly approved purchase attempt. Keep holds while status or submission outcome is uncertain. On `COMPLETED`, compare actual total against the approved allocation. A difference requires reconciliation; do not silently over-debit anyone or repurchase.
 
-### 5.15 `debitWallet` — POST `/wallet-debits`
+### 5.15 `debitWallet`
 
 Input: operation context, group ID, checkout ID, participant/user IDs, immutable allocation ID, consent reference, exact approved debit and final debit. A validates authenticated participant consent and owns its evidence; B retains the reference and verifies the monetary bounds. For v0.1 these amounts must be equal.
 
@@ -187,11 +188,11 @@ Return local debit ID, posting ID when known, state, amount and optional balance
 
 ### 5.16 `getWalletDebit` / `retryWalletDebit` / `getOperation`
 
-GET `/wallet-debits/{debitId}` returns the journal result and, when a provider ID is known, verifies it through `GET /postings/{id}`. A posting resource contains type, entries and creation information; our `APPLIED/UNKNOWN/REJECTED` state is wrapper bookkeeping, not a Reap posting-status enum. [Get posting](https://docs.reap.global/api-reference/virtual-asset-postings/get-posting)
+`getWalletDebit(debitId)` returns the journal result and, when a provider ID is known, verifies it through `GET /postings/{id}`. A posting resource contains type, entries and creation information; our `APPLIED/UNKNOWN/REJECTED` state is wrapper bookkeeping, not a Reap posting-status enum. [Get posting](https://docs.reap.global/api-reference/virtual-asset-postings/get-posting)
 
-GET `/operations/{operationId}` recovers a command after connection loss. This route reads our journal. `UNKNOWN` requires reconciliation before any replacement command. A lost response is not resolved by guessing from a changed balance.
+`getOperation(operationId)` recovers a command after connection loss. This function reads our journal. `UNKNOWN` requires reconciliation before any replacement command. A lost response is not resolved by guessing from a changed balance.
 
-POST `/wallet-debits/{debitId}/retry` explicitly retries a **definitively rejected** debit after its cause is fixed. Input: debit ID and a new operation context. Keep the original debit/account/amount/allocation/consent identity; revalidate consent applicability and funds. B creates a new upstream posting-attempt key only after proving the previous attempt did not apply. `APPLIED`/`NOOP` returns the existing result; `UNKNOWN` blocks replacement and calls for recovery of the original attempt. Serialize retry attempts on the existing debit record and retain every provider-attempt record. `debitWallet` called again for an existing participant always returns that original debit; it does not implicitly restart it.
+`retryWalletDebit(debitId, context)` explicitly retries a **definitively rejected** debit after its cause is fixed. Input: debit ID and a new operation context. Keep the original debit/account/amount/allocation/consent identity; revalidate consent applicability and funds. B creates a new upstream posting-attempt key only after proving the previous attempt did not apply. `APPLIED`/`NOOP` returns the existing result; `UNKNOWN` blocks replacement and calls for recovery of the original attempt. Serialize retry attempts on the existing debit record and retain every provider-attempt record. `debitWallet` called again for an existing participant always returns that original debit; it does not implicitly restart it.
 
 ### 5.17 Optional helpers, separate from the core interface
 
@@ -204,7 +205,7 @@ POST `/wallet-debits/{debitId}/retry` explicitly retries a **definitively reject
 
 ### 5.18 B's upstream route map
 
-These are **Reap routes**, unlike the internal routes above. Provider IDs replace the path placeholders. Internal metadata must not be forwarded as extra provider fields.
+These are **provider implementation details owned exclusively by B**. A calls the functions above; these provider routes are not the interface between engineers. Provider IDs replace the path placeholders. Internal metadata must not be forwarded as extra provider fields.
 
 ```text
 Wallet:       GET  /accounts/{id}
@@ -283,7 +284,7 @@ Illustrative fixture, not Reap data: A's bread is 400 minor units, B's milk 600,
 
 The companion `WrapperError` separates provider errors from local validation. Return safe messages plus `providerCode`, request/operation identifiers, and an explicit recovery instruction. Unknown enum values map to `UNKNOWN` with the raw value retained; never map them to success.
 
-Suggested HTTP mapping: invalid input 422; ownership/access 403; missing mapping/resource 404; changed quote, idempotency conflict or precondition failure 409; rate limit 429; unverified feature/configuration 503; invalid provider payload 502. A journaled operation with an uncertain upstream outcome returns 202 and a recoverable operation reference, not a false definitive failure. Synchronous reads and completed commands return 200.
+Return `Promise<Result<T>>`. Expected validation, provider, eligibility and recovery failures resolve to `{ok: false, error, requestId, mode}`. A branches on `error.code`, `outcome` and `recovery`; no transport status codes cross this boundary. Unknown mutation outcomes must retain `operationId` for recovery. Unexpected programming/runtime exceptions may reject the promise; A must recover any potentially dispatched mutation before retrying.
 
 Reap caches idempotent responses for **24 hours**, including most errors; `401`, `422`, `429` are excluded. Identical retries replay; concurrent same-key requests may return `IDEMPOTENCY_REQUEST_IN_PROGRESS`; changed bodies return `IDEMPOTENT_PARAMETER_MISMATCH`. After the window, the same key can execute again. B's durable operation/attempt/participant uniqueness must outlive that window. [Idempotency](https://docs.reap.global/api-reference/idempotency)
 

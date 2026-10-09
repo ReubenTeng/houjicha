@@ -28,7 +28,7 @@ export type Result<T> = Success<T> | Failure;
 /** A supplies these before dispatch. B journals an immutable request hash. */
 export interface MutationContext {
   operationId: Id;
-  idempotencyKey: string; // HTTP uses Idempotency-Key; do not duplicate in JSON
+  idempotencyKey: string; // stable for retries of the identical command
 }
 export interface PageInput { cursor?: string; limit?: number }
 export interface Page<T> { items: T[]; nextCursor: string | null }
@@ -269,7 +269,7 @@ export interface Operation {
   updatedAt: Timestamp;
 }
 
-/** HTTP equivalents and all preconditions are in reap-wrapper-api.md. */
+/** Internal service interface. Preconditions and recovery rules are in reap-wrapper-api.md. */
 export interface ReapWrapper {
   getCapabilities(): Promise<Result<Capabilities>>;
   getWallet(userId: Id): Promise<Result<WalletSnapshot>>;

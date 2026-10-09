@@ -51,10 +51,11 @@ npm test
 npm run typecheck
 ```
 
-## Reap wrapper Swagger docs
+## Reap wrapper API reference
 
-The orchestration ↔ Reap boundary is defined in TypeScript. This is a proposed
-contract; the docs server does not submit purchases or implement the wrapper.
+The orchestration ↔ Reap boundary is defined in TypeScript. The documentation
+uses expandable service functions, argument tables, return types and examples.
+It describes direct calls to an injected `ReapWrapper` TypeScript interface.
 
 ```bash
 npm run docs:generate
@@ -62,13 +63,12 @@ npm run docs:check
 npm run docs:serve
 ```
 
-Open [Swagger UI](http://127.0.0.1:8080/docs). It serves its assets locally after
-`npm install`; no CDN is needed. Set `DOCS_PORT` to change the port. Request
-execution is disabled in this documentation preview.
+Open [the API reference](http://127.0.0.1:8080/docs), or open
+[the HTML file](docs/reap-wrapper-reference.html) directly in a browser.
+Set `DOCS_PORT` to change the preview port.
 
 - [Engineering handoff](docs/reap-wrapper-api.md)
 - [TypeScript interface](docs/reap-wrapper-contract.ts)
-- [OpenAPI 3.1 specification](docs/reap-wrapper.openapi.json), importable into Swagger Editor or Postman
 
-Edit the TypeScript contract and HTTP schema bindings, then regenerate the spec.
-`docs:check` verifies schema validity, method coverage and generated-file freshness.
+Edit the TypeScript contract, then regenerate the page and function schema bindings.
+`docs:check` checks TypeScript, method coverage and generated-file freshness.
