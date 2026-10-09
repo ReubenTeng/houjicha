@@ -2,7 +2,7 @@
 
 MCP server for group buying. An external AI agent searches merchants and manages group buys by calling tools on this server. The server is a thin adapter over the orchestration backend. It does not run the group-buy engine, take payments, or host its own model.
 
-MCP is the interface this project is building. The adapter is specified and not implemented yet. The only runnable code today is a Telegram prototype that answers two commands. A later Telegram adapter can call the same tools. Group-buy behavior does not depend on Telegram chat IDs or message templates.
+MCP is the interface this project is building. The repository includes an orchestration backend, a Reap sandbox wrapper and a Telegram prototype. A later Telegram adapter can call the same tools. Group-buy behavior does not depend on Telegram chat IDs or message templates.
 
 ## Architecture
 
@@ -16,8 +16,8 @@ MCP is the interface this project is building. The adapter is specified and not 
 | Piece | State |
 | --- | --- |
 | MCP tools and contract | Proposed. See the [MCP handoff](docs/plans/mcp-handoff/README.md). |
-| Orchestration backend | Not in this repo. Build the adapter against a labeled mock until it exists. |
-| Payment / Reap wrapper | Contract and generated reference only. |
+| Orchestration backend | Implemented with PostgreSQL persistence and portable SQLite tests. |
+| Payment / Reap wrapper | Real sandbox catalogue, details and quotes; four local mock wallets. Participant-funded execution remains a separate service. |
 | Telegram bot | Runnable prototype. `/start` and `/tester` only. |
 
 ## MCP handoff
@@ -93,7 +93,7 @@ It describes direct calls to an injected `ReapWrapper` TypeScript interface.
 
 The newer [MCP handoff](docs/plans/mcp-handoff/README.md) describes the outer
 orchestration interface; the [payment-service handoff](docs/plans/payment-service-handoff/README.md)
-describes a group-payment workflow above the provider adapter. Neither is implemented.
+describes a group-payment workflow above the provider adapter. The orchestration backend is implemented; participant-funded payment execution remains separate.
 The old external-card purchase followed by virtual-credit debits does not satisfy
 the newer participant-funded-before-checkout requirement. Read the reconciliation
 section in the engineering handoff before implementing either payment sequence.
@@ -113,3 +113,13 @@ Set `DOCS_PORT` to change the preview port.
 
 Edit the TypeScript contract, then regenerate the page and function schema bindings.
 `docs:check` checks TypeScript, method coverage and generated-file freshness.
+
+## Real Reap sandbox catalogue
+
+`npm run reap:catalog -- coffee` (also `reap:demo`) searches Reap and fetches details for the first result. `npm run reap:orchestration-demo -- coffee` searches through `Orchestration.searchCatalog` and reads the four USD 100 local mock wallets. Both commands load the ignored `.env` with Node's environment-file support and exit nonzero on provider errors. They never fall back to fixtures or create users, enrollments, checkouts or debits.
+
+`src/reap/mock-users.ts` overrides only wallet/card/enrollment reads for the four demo identities. All catalogue and quote operations delegate to the real wrapper. Discovered merchant IDs are deterministic and persisted, but purchase eligibility remains UNVERIFIED. Quotes may be requested for discovered stores; checkout still requires a verified store.
+
+`createReapOrchestrationPorts` stores exact variant-to-product mappings in SQLite and refreshes details by product ID, never by title. Supply fulfillment through the trusted callback. Quotes remain AGGREGATE_ONLY unless a trusted evidence callback supplies verified line allocation; orchestration blocks unsupported pricing. An optional separate payment executor must implement participant funding and recovery. Without it, execution/recovery fail with PROVIDER_UNAVAILABLE and lookup returns null.
+
+Journal version 2 includes the provider origin and rejects older files. Keep journal and mapping files under ignored `.reap/`; reconcile old or unknown operations before replacing journals. The offline provider in `src/reap/demo.ts` is a test fixture only.

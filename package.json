@@ -12,11 +12,14 @@
     "start": "node dist/telegram/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
+    "reap:demo": "node --env-file-if-exists=.env --import tsx src/reap/catalog-run.ts",
     "docs:generate": "tsx scripts/build-api-docs.ts",
     "docs:check": "tsc -p tsconfig.docs.json && tsx scripts/build-api-docs.ts --check",
     "docs:serve": "tsx scripts/serve-docs.ts",
     "orchestration:demo": "tsx src/orchestration/demo-cli.ts",
-    "db:setup": "node --env-file-if-exists=.env --import tsx scripts/setup-supabase.ts"
+    "db:setup": "node --env-file-if-exists=.env --import tsx scripts/setup-supabase.ts",
+    "reap:catalog": "node --env-file-if-exists=.env --import tsx src/reap/catalog-run.ts",
+    "reap:orchestration-demo": "node --env-file-if-exists=.env --import tsx src/reap/orchestration-run.ts"
   },
   "dependencies": {
     "grammy": "^1.35.0",
