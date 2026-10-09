@@ -1,13 +1,13 @@
 import { z } from "zod";
 
-const text = (max = 200) => z.string().trim().min(1).max(max);
+const text = (max = 200) => z.string().min(1).max(max);
 const integer = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 export const groupMoneySchema = z.strictObject({ currency: z.string().regex(/^[A-Z]{3}$/), minor: z.string().regex(/^(0|[1-9]\d{0,17})$/) });
 const point = z.strictObject({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) });
 const instant = z.iso.datetime({ offset: true });
 const window = z.strictObject({ startsAt: instant, endsAt: instant, timeZone: text(100) });
 const collection = z.strictObject({ point: point.extend({ label: text(300), address: z.string().max(1000) }), window });
-const lines = z.array(z.strictObject({ variantId: text(200), quantity: z.number().int().min(1).max(10000) })).min(1).max(100);
+const lines = z.array(z.strictObject({ variantId: text(200), quantity: z.number().int().min(1).max(1000000) })).min(1).max(20);
 const constraints = z.strictObject({ maxTotal: groupMoneySchema, origin: point, maxDistanceMeters: z.number().finite().min(0), availabilityWindow: window });
 const metadata = z.strictObject({ commandId: text(), expectedVersion: integer });
 const basket = z.strictObject({ lines, constraints, authorizationRef: text() });
