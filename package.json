@@ -18,10 +18,12 @@
     "orchestration:demo": "tsx src/orchestration/demo-cli.ts"
   },
   "dependencies": {
-    "grammy": "^1.35.0"
+    "grammy": "^1.35.0",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@types/node": "^22.16.0",
+    "@types/pg": "^8.23.1",
     "ts-json-schema-generator": "^2.9.0",
     "tsx": "^4.20.3",
     "typescript": "^5.9.2",

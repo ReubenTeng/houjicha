@@ -8,7 +8,7 @@ const mutable = (g: Group): boolean => g.status === 'OPEN' || g.status === 'FINA
 export class Orchestration {
   constructor(private readonly store: Store, private readonly catalog: CatalogPort, private readonly payments: GroupPaymentPort, private readonly authorizations: AuthorizationPort, private readonly clock: Clock) {}
   private actor(actor: ActorContext): void { requireRule(actor && typeof actor.userId === 'string' && actor.userId.length > 0, 'UNAUTHENTICATED'); }
-  private group(id: string): Group { const group = this.store.read(id); requireRule(group, 'NOT_FOUND'); return group; }
+  private async group(id: string): Promise<Group> { const group = (await this.store.read(id)); requireRule(group, 'NOT_FOUND'); return group; }
   private view(g: Group, actor: ActorContext): GroupView {
     const own = g.participants.find(p => p.userId === actor.userId) ?? null;
     return structuredClone({ id: g.id, merchantId: g.merchantId, organizerId: g.organizerId,
@@ -19,17 +19,17 @@ export class Orchestration {
       payment: g.payment ? { submissionId: g.payment.submissionId, status: g.payment.status?.state ?? 'UNKNOWN', paymentOperationId: g.payment.status?.paymentOperationId ?? null, ownOutcome: g.payment.status?.participantOutcomes.find(p=>p.participantId===actor.userId) ?? null, nextActions: (g.payment.status?.nextActions ?? []).filter(a => a.targetUserId === actor.userId) } : null,
       quoteExpiresAt: g.quote?.expiresAt ?? null, blocker: g.blocker });
   }
-  getGroupBuy(actor: ActorContext, id: string): GroupView { this.actor(actor); return this.view(this.group(id), actor); }
-  getPaymentStatus(actor: ActorContext, id: string): GroupView['payment'] {
-    this.actor(actor); const g = this.group(id);
+  async getGroupBuy(actor: ActorContext, id: string): Promise<GroupView> { this.actor(actor); return this.view((await this.group(id)), actor); }
+  async getPaymentStatus(actor: ActorContext, id: string): Promise<GroupView['payment']> {
+    this.actor(actor); const g = (await this.group(id));
     requireRule(g.participants.some(p => p.userId === actor.userId) || g.organizerId === actor.userId, 'FORBIDDEN');
     return this.view(g,actor).payment;
   }
-  getMyUpdates(actor: ActorContext, cursor = 0, limit = 50): { items: Omit<Event, 'recipients'>[]; nextCursor: number; pending: { groupBuyId: string; approvals: Approval[]; nextActions: NonNullable<GroupView['payment']>['nextActions'] }[] } {
+  async getMyUpdates(actor: ActorContext, cursor = 0, limit = 50): Promise<{ items: Omit<Event, 'recipients'>[]; nextCursor: number; pending: { groupBuyId: string; approvals: Approval[]; nextActions: NonNullable<GroupView['payment']>['nextActions'] }[] }> {
     this.actor(actor); requireRule(Number.isSafeInteger(cursor) && cursor >= 0 && Number.isInteger(limit) && limit > 0 && limit <= 100);
-    const page = this.store.updates(actor.userId,cursor,limit);
+    const page = (await this.store.updates(actor.userId,cursor,limit));
     return { items: page.items.map(({recipients: _recipients,...event}) => event), nextCursor: page.nextCursor,
-      pending: this.store.groups().filter(g => g.participants.some(p => p.userId === actor.userId)).map(g => { const v = this.view(g,actor); return { groupBuyId:g.id, approvals:v.approvals.filter(a=>a.state==='PENDING'), nextActions:v.payment?.nextActions ?? [] }; }).filter(p=>p.approvals.length || p.nextActions.length) };
+      pending: (await this.store.groups()).filter(g => g.participants.some(p => p.userId === actor.userId)).map(g => { const v = this.view(g,actor); return { groupBuyId:g.id, approvals:v.approvals.filter(a=>a.state==='PENDING'), nextActions:v.payment?.nextActions ?? [] }; }).filter(p=>p.approvals.length || p.nextActions.length) };
   }
   async searchCatalog(actor: ActorContext, query: string, merchantId?: string, cursor?: string) {
     this.actor(actor); requireRule(typeof query === 'string' && query.length <= 500);
@@ -47,7 +47,7 @@ export class Orchestration {
   async findGroupBuys(actor: ActorContext, merchantId: string, input: Pick<BasketInput,'lines'|'constraints'>): Promise<Discovery[]> {
     this.actor(actor); await this.basket({ ...input, authorizationRef: '' }, merchantId);
     const results: Discovery[] = [];
-    for (const g of this.store.groups()) {
+    for (const g of (await this.store.groups())) {
       if (g.merchantId !== merchantId || g.status !== 'OPEN' || instant(g.joiningDeadline) <= instant(this.clock.now()) || !fits(g.collection,input.constraints) || g.participants.some(p=>p.userId===actor.userId)) continue;
       const prospective = structuredClone(g);
       prospective.participants.push({ userId: actor.userId, lines: input.lines, constraints: input.constraints, authorization: {} as Authorization, allocation: null });
@@ -110,7 +110,7 @@ export class Orchestration {
   async execute(actor: ActorContext, command: Mutation): Promise<CommandResult> {
     this.actor(actor); this.validateCommand(command);
     const key=canonical([actor.userId,command.operation,command.metadata.commandId]); const hash=fingerprint(command);
-    const prior=this.store.command(key,hash); if (prior) return prior;
+    const prior=(await this.store.command(key,hash)); if (prior) return prior;
     try {
     let g: Group;
     if (command.operation==='create') {
@@ -124,7 +124,7 @@ export class Orchestration {
       const authorization=await this.grant(actor,input,g,'HOST');
       g.participants.push({userId:actor.userId,lines:structuredClone(input.lines),constraints:structuredClone(input.constraints),authorization,allocation:null});
     } else {
-      g=this.group(command.groupBuyId);
+      g=(await this.group(command.groupBuyId));
       if(g.version!==command.metadata.expectedVersion)throw new DomainError('VERSION_CONFLICT',true,g.version);
     }
     const previous=g.version; g.version++; const events: Event[]=[];
@@ -160,15 +160,15 @@ export class Orchestration {
       }
     }
     const result={group:this.view(g,actor),eventIds:events.map(e=>e.eventId)};
-    return this.store.commit(g,previous,events,{key,fingerprint:hash,result})!;
+    return (await this.store.commit(g,previous,events,{key,fingerprint:hash,result}))!;
     } catch(error) {
-      const raced=this.store.command(key,hash);if(raced)return raced;
+      const raced=(await this.store.command(key,hash));if(raced)return raced;
       throw error;
     }
   }
   // Payment adapter service lookup. Never expose this operation as a user tool.
-  getPaymentAuthorization(submissionId: string, authorizationId: string): { userId: string; total: NonNullable<Group['quote']>['merchantTotal']; snapshot: PaymentSnapshot } | null {
-    const g=this.store.groups().find(g=>g.payment?.submissionId===submissionId);
+  async getPaymentAuthorization(submissionId: string, authorizationId: string): Promise<{ userId: string; total: NonNullable<Group['quote']>['merchantTotal']; snapshot: PaymentSnapshot } | null> {
+    const g=(await this.store.groups()).find(g=>g.payment?.submissionId===submissionId);
     const charge=g?.payment?.snapshot.participantCharges.find(c=>c.authorizationId===authorizationId);
     return g?.payment && charge ? structuredClone({userId:charge.participantId,total:charge.totalDebit,snapshot:g.payment.snapshot}) : null;
   }
@@ -209,18 +209,18 @@ export class Orchestration {
   // including duplicate/out-of-order/gapped events; untrusted payload cannot change state.
   async reconcile(submissionId: string): Promise<void> {
     const status=await this.payments.getGroupPayment(submissionId); if(!status)return;
-    const found=this.store.groups().find(g=>g.payment?.submissionId===submissionId); if(!found)return;
+    const found=(await this.store.groups()).find(g=>g.payment?.submissionId===submissionId); if(!found)return;
     const g=found; const previous=g.version; g.version++; const events: Event[]=[];
-    this.applyStatus(g,status,events); if(events.length)this.store.commit(g,previous,events);
+    this.applyStatus(g,status,events); if(events.length)(await this.store.commit(g,previous,events));
   }
   // One bounded worker pass. Run on a server-owned timer, not a client session.
   async tick(): Promise<void> {
-    for(const original of this.store.groups()) {
+    for(const original of (await this.store.groups())) {
       try { await this.advance(original.id); } catch(error) { if(!(error instanceof DomainError) || error.code!=='VERSION_CONFLICT') throw error; }
     }
   }
   private async advance(id: string): Promise<void> {
-    let g=this.group(id); let previous=g.version; const events: Event[]=[]; g.version++;
+    let g=(await this.group(id)); let previous=g.version; const events: Event[]=[]; g.version++;
     if(mutable(g)) {
       if(instant(g.collection.window.endsAt)<=instant(this.clock.now())) { g.status='CANCELLED'; for(const approval of g.approvals)if(approval.state==='PENDING')approval.state='OBSOLETE'; this.event(g,events,'group.cancelled'); }
       else {
@@ -228,9 +228,9 @@ export class Orchestration {
         if(!g.quote || instant(g.quote.expiresAt)<=instant(this.clock.now())) await this.reprice(g,events);
         if(g.status==='FINALIZING' && g.quote && !g.blocker && !g.approvals.some(a=>a.state==='PENDING' && a.orderRevision===g.orderRevision)) this.lock(g,events);
       }
-      if(events.length)this.store.commit(g,previous,events);
+      if(events.length)(await this.store.commit(g,previous,events));
     }
-    g=this.group(id);
+    g=(await this.group(id));
     if(!g.payment || ['COMPLETED','FAILED','CANCELLED'].includes(g.status))return;
     const submissionId=g.payment.submissionId;
     try {
@@ -238,15 +238,15 @@ export class Orchestration {
       if(!status) {
         if(instant(g.payment.snapshot.quoteExpiresAt)<=instant(this.clock.now())) {
           if(!g.payment.dispatched) {
-            previous=g.version;g.version++;g.payment=null;g.status='FINALIZING';g.quote=null; const refreshed: Event[]=[]; await this.reprice(g,refreshed); this.store.commit(g,previous,refreshed); return;
+            previous=g.version;g.version++;g.payment=null;g.status='FINALIZING';g.quote=null; const refreshed: Event[]=[]; await this.reprice(g,refreshed); (await this.store.commit(g,previous,refreshed)); return;
           }
           status=await this.payments.requestRecovery(g.payment.submissionId,'QUOTE_EXPIRED_WITH_UNKNOWN_SUBMISSION');
         } else {
-          if(!g.payment.dispatched) {previous=g.version;g.version++;g.payment.dispatched=true;this.store.commit(g,previous,[]);}
+          if(!g.payment.dispatched) {previous=g.version;g.version++;g.payment.dispatched=true;(await this.store.commit(g,previous,[]));}
           status=await this.payments.startGroupPayment(structuredClone(g.payment.snapshot),g.payment.submissionId);
         }
       }
-      g=this.group(id);previous=g.version;g.version++;const applied: Event[]=[];this.applyStatus(g,status,applied);if(applied.length)this.store.commit(g,previous,applied);
+      g=(await this.group(id));previous=g.version;g.version++;const applied: Event[]=[];this.applyStatus(g,status,applied);if(applied.length)(await this.store.commit(g,previous,applied));
       if(g.status==='RECOVERING' && status.state==='FAILED' && status.unresolvedFunds) {
         await this.payments.requestRecovery(g.payment!.submissionId,'UNRESOLVED_FUNDS');
         await this.reconcile(g.payment!.submissionId);
@@ -254,8 +254,8 @@ export class Orchestration {
     } catch(error) {
       if(error instanceof DomainError && error.code==='VERSION_CONFLICT')return;
       // Lost response is financial uncertainty. Preserve immutable intent and lock.
-      g=this.group(id); if(!g.payment || g.payment.submissionId!==submissionId || ['COMPLETED','FAILED','CANCELLED'].includes(g.status))return;
-      previous=g.version;g.version++;g.status='RECOVERING';g.blocker='PROVIDER_UNAVAILABLE';const unknown: Event[]=[];this.event(g,unknown,'payment.unknown');this.store.commit(g,previous,unknown);
+      g=(await this.group(id)); if(!g.payment || g.payment.submissionId!==submissionId || ['COMPLETED','FAILED','CANCELLED'].includes(g.status))return;
+      previous=g.version;g.version++;g.status='RECOVERING';g.blocker='PROVIDER_UNAVAILABLE';const unknown: Event[]=[];this.event(g,unknown,'payment.unknown');(await this.store.commit(g,previous,unknown));
     }
   }
 }
