@@ -77,3 +77,22 @@ describe("five strict public contracts", () => {
     expect(inputSchemas.search_products.safeParse({ query: "coffee", country: "US", currency: "USD", limit: 11 }).success).toBe(false);
   });
 });
+
+describe('Supabase read-only sandbox configuration', () => {
+  const sandbox = () => ({ ...env(), APP_MODE:'sandbox', MCP_READ_ONLY:'true', MCP_DATABASE_BACKEND:'supabase',
+    REAP_API_KEY:'test', REAP_PROJECT_REFERENCE:'test', ALLOWED_COUNTRIES:'SG', ALLOWED_CURRENCIES:'USD', ALLOWED_MERCHANTS:'{"coffee":"Coffee"}',
+    SUPABASE_URL:'db.example.supabase.co', SUPABASE_PORT:'5432', SUPABASE_USER:'postgres', SUPABASE_PASSWORD:'test' });
+  test('uses the shared Supabase helper and an isolated schema', () => {
+    const config = loadConfig(sandbox());
+    expect(config.databaseConnection).toMatchObject({host:'db.example.supabase.co',port:5432,user:'postgres',ssl:{rejectUnauthorized:true}});
+    expect(config.databaseConnection.connectionString).toBeUndefined();
+    expect(config.databaseSchema).toBe('houjicha_mcp');
+    expect(config.readOnly).toBe(true);
+  });
+  test('fails closed for missing Supabase credentials or enabled checkout', () => {
+    expect(()=>loadConfig({...sandbox(),SUPABASE_PASSWORD:''})).toThrow(/SUPABASE/);
+    expect(()=>loadConfig({...sandbox(),REAP_CHECKOUT_ENABLED:'true'})).toThrow(/MCP_READ_ONLY/);
+    expect(()=>loadConfig({...sandbox(),MCP_DATABASE_SCHEMA:'public;DROP SCHEMA public'})).toThrow();
+    expect(()=>loadConfig({...sandbox(),BIND_HOST:'0.0.0.0'})).toThrow(/HTTPS/);
+  });
+});

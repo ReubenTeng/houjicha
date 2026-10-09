@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { Pool } from "pg";
-import { groupSettings } from "../src/group-buy/runtime.js";
 import { supabaseConfig } from "../src/orchestration/supabase.js";
+import { groupSettings } from "../src/group-buy/runtime.js";
 import { loadConfig, readEnvironment } from "../src/mcp/config.js";
 import { asAppError, log } from "../src/mcp/errors.js";
 
@@ -11,7 +11,7 @@ try {
   const settings = groupSettings(loadConfig(), process.env);
   if (!settings) throw new Error("Enable the group backend before setup.");
   const sql = await readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8");
-  pool = new Pool(supabaseConfig());
+  pool = new Pool(supabaseConfig(process.env));
   await pool.query(sql.replaceAll("orchestration", settings.schema));
   log("group_schema_ready");
 } catch (error) {

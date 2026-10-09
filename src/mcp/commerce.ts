@@ -29,6 +29,7 @@ export class Commerce {
   async call(name: ToolName, input: unknown, identity: Identity): Promise<Envelope> {
     let actor: Actor | null = null;
     try {
+      if (this.config.readOnly && name !== "search_products" && name !== "get_purchase_status") throw new AppError("READ_ONLY_MODE", "This MCP runtime only permits catalogue and status reads.");
       if (!identity.scopes.includes(requiredScopes[name])) throw new AppError("FORBIDDEN", `This action requires the ${requiredScopes[name]} scope. Reconnect with the required permission.`);
       actor = await this.db.actor(identity);
       await this.db.rateLimit(actor.id);

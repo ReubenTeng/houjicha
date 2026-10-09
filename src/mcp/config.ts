@@ -1,3 +1,5 @@
+import { supabaseConfig } from "../orchestration/supabase.js";
+import type { PoolConfig } from "pg";
 import { existsSync } from "node:fs";
 import { loadEnvFile } from "node:process";
 import { fileURLToPath } from "node:url";
@@ -12,9 +14,12 @@ export const loopback = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 const sandboxHosts = new Set(["sg.sandbox.api.reap.global", "mx.sandbox.api.reap.global", "sandbox.api.reap.global"]);
 
 const environment = z.object({
+  MCP_READ_ONLY: bool,
   APP_MODE: z.enum(["mock", "sandbox"]).default("mock"),
   PUBLIC_BASE_URL: z.url().default("http://127.0.0.1:3000"),
-  DATABASE_URL: z.string().min(1),
+  MCP_DATABASE_BACKEND: z.enum(["postgres", "supabase"]).default("postgres"),
+  MCP_DATABASE_SCHEMA: z.string().regex(/^[a-z][a-z0-9_]{0,62}$/).optional(),
+  DATABASE_URL: z.string().default(""),
   DATA_ENCRYPTION_KEY: z.string().min(1),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   BIND_HOST: z.string().default("127.0.0.1"),
@@ -62,6 +67,8 @@ function fail(field: string): never {
 export function readEnvironment(): void {
   const path = process.env.REAP_ENV_FILE ?? fileURLToPath(new URL("../../.env", import.meta.url));
   if (path && existsSync(path)) loadEnvFile(path);
+  const profile = fileURLToPath(new URL("../../.reap/mcp.env", import.meta.url));
+  if (process.env.REAP_ENV_FILE === undefined && existsSync(profile)) loadEnvFile(profile);
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
@@ -72,11 +79,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   const reapUrl = new URL(e.REAP_BASE_URL);
   if (publicUrl.username || publicUrl.password || publicUrl.search || publicUrl.hash || publicUrl.pathname !== "/") fail("PUBLIC_BASE_URL");
   const local = loopback.has(publicUrl.hostname);
-  if (publicUrl.protocol !== "https:" && !(e.APP_MODE === "mock" && local && loopback.has(e.BIND_HOST))) fail("PUBLIC_BASE_URL (HTTPS is required outside loopback mock mode)");
+  if (publicUrl.protocol !== "https:" && !((e.APP_MODE === "mock" || e.MCP_READ_ONLY) && local && loopback.has(e.BIND_HOST))) fail("PUBLIC_BASE_URL (HTTPS is required outside loopback mock mode)");
   if (!sandboxHosts.has(reapUrl.hostname) || reapUrl.protocol !== "https:" || reapUrl.port || reapUrl.username || reapUrl.password || reapUrl.search || reapUrl.hash || reapUrl.pathname !== "/") fail("REAP_BASE_URL (only documented sandbox hosts are allowed)");
-  let databaseUrl: URL;
-  try { databaseUrl = new URL(e.DATABASE_URL); } catch { fail("DATABASE_URL"); }
-  if (!["postgres:", "postgresql:"].includes(databaseUrl.protocol)) fail("DATABASE_URL");
+  let databaseConnection: PoolConfig;
+  let databaseSsl = true;
+  if (e.MCP_DATABASE_BACKEND === "supabase") {
+    try { databaseConnection = supabaseConfig(env); } catch { fail("SUPABASE_URL / SUPABASE_PORT / SUPABASE_USER / SUPABASE_PASSWORD / SUPABASE_SSL_CA_FILE"); }
+  } else {
+    let databaseUrl: URL;
+    try { databaseUrl = new URL(e.DATABASE_URL); } catch { fail("DATABASE_URL"); }
+    if (!["postgres:", "postgresql:"].includes(databaseUrl.protocol)) fail("DATABASE_URL");
+    databaseSsl = !loopback.has(databaseUrl.hostname);
+    databaseConnection = { connectionString: e.DATABASE_URL, ...(databaseSsl ? { ssl: { rejectUnauthorized: true } } : {}) };
+  }
+  const databaseSchema = e.MCP_DATABASE_SCHEMA ?? (e.MCP_DATABASE_BACKEND === "supabase" ? "houjicha_mcp" : "public");
   const encryptionKey = Buffer.from(e.DATA_ENCRYPTION_KEY, "base64");
   if (encryptionKey.length !== 32 || encryptionKey.toString("base64") !== e.DATA_ENCRYPTION_KEY) fail("DATA_ENCRYPTION_KEY");
   const countries = list(e.ALLOWED_COUNTRIES);
@@ -100,6 +116,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     }
     if (e.MOCK_SCENARIO !== "success") fail("MOCK_SCENARIO (not available in sandbox)");
   } else if (e.SANDBOX_SIMULATE_CHECKOUT || e.REAP_CHECKOUT_ENABLED) fail("sandbox flags (not available in mock mode)");
+  if (e.MCP_READ_ONLY && (e.REAP_CHECKOUT_ENABLED || e.SANDBOX_SIMULATE_CHECKOUT)) fail("MCP_READ_ONLY (checkout and simulation must be disabled)");
   const origins = [publicUrl.origin, ...list(e.ALLOWED_ORIGINS)];
   for (const value of origins) {
     let url: URL;
@@ -107,8 +124,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     if (url.origin !== value || (url.protocol !== "https:" && !(local && loopback.has(url.hostname)))) fail("ALLOWED_ORIGINS");
   }
   return {
-    mode: e.APP_MODE, publicUrl, local, databaseUrl: e.DATABASE_URL,
-    databaseSsl: !loopback.has(databaseUrl.hostname), encryptionKey,
+    readOnly: e.MCP_READ_ONLY, mode: e.APP_MODE, publicUrl, local, databaseUrl: e.DATABASE_URL,
+    databaseSsl, databaseConnection, databaseSchema, encryptionKey,
     port: e.PORT, bindHost: e.BIND_HOST, trustProxyHops: e.TRUST_PROXY_HOPS,
     countries, currencies, merchants, caps, hostedHosts, catalogHosts, origins,
     namespace: e.APP_MODE === "mock" ? "mock:v1" : `sandbox:${e.REAP_PROJECT_REFERENCE}:${reapUrl.hostname}:${e.REAP_API_VERSION}`,

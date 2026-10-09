@@ -15,13 +15,14 @@ export interface GroupBackend {
 }
 
 export class GroupBuyTool {
-  constructor(private readonly config: Pick<Config, "mode">, private readonly db: Pick<Database, "actor" | "rateLimit" | "audit">, private readonly backend?: GroupBackend) {}
+  constructor(private readonly config: Pick<Config, "mode"> & Partial<Pick<Config, "readOnly">>, private readonly db: Pick<Database, "actor" | "rateLimit" | "audit">, private readonly backend?: GroupBackend) {}
 
   async call(raw: unknown, identity: Identity): Promise<Envelope> {
     let userId: string | null = null;
     let result: Envelope;
     try {
       const input = groupInputSchema.parse(raw);
+      if (this.config.readOnly && groupScopes(input).some(scope => scope !== "commerce:read")) throw new AppError("READ_ONLY_MODE", "This MCP runtime only permits catalogue and stored group reads.");
       const missing = groupScopes(input).find(scope => !identity.scopes.includes(scope));
       if (missing) throw new AppError("FORBIDDEN", `This group action requires ${missing}. Reconnect with the required permission.`);
       userId = (await this.db.actor(identity)).id;

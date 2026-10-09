@@ -55,7 +55,7 @@ The complete dispatcher can use injected real payment and consent ports later. F
 
 - `src/reap/`: provider wrapper, versioned operation journal, mock-user read adapter and SQLite-backed orchestration ports.
 - `src/mcp/`: MCP HTTP/stdio transports, OAuth verification, commerce, provider adapters, PostgreSQL operations, and recovery.
-- `src/group-buy/`: strict tool schemas, identity-aware dispatch, capability gates, Reap catalog mapping, and core composition.
+- `src/group-buy/`: strict tool schemas, identity-aware dispatch, capability gates, Reap wrapper composition and core dispatch.
 - `src/orchestration/`: unchanged group lifecycle, permissions, allocation, persistence interfaces, events, and worker.
 - `src/telegram/`: unchanged optional bot prototype.
 
@@ -175,4 +175,22 @@ Open [the API reference](http://127.0.0.1:8080/docs), or [the HTML file](docs/re
 
 Journal version 2 includes the provider origin and rejects older files. Keep journal and mapping files under ignored `.reap/`; reconcile old or unknown operations before replacing journals. The offline provider in `src/reap/demo.ts` is a test fixture only.
 
-The MCP service retains its PostgreSQL catalogue adapter and opaque IDs; the wrapper demo uses its own SQLite mappings and provider IDs. These are separate composition roots, not interchangeable caches. The merge keeps the six MCP tools and their existing auth/payment gates; it does not silently enable group payments.
+MCP `group_buy` now calls `Orchestration`, whose catalogue port is built by `createReapOrchestrationPorts` around our `src/reap` wrapper. It does not call the imported commerce provider. Group catalogue results use persisted `reap_merchant_*` identities and exact Reap product/variant IDs. Search and detail requests go to Reap sandbox; discovered merchants remain unverified for purchase. The five standalone commerce tools retain their separate opaque IDs and provider implementation.
+
+### Supabase-backed MCP catalogue
+
+Fill the `SUPABASE_*` PostgreSQL connection fields shown in `.env.example` in the ignored `.env`, alongside `REAP_API_KEY`. Then run:
+
+```bash
+npm run setup:mcp-sandbox
+npm run mcp:catalog-check -- coffee
+npm run dev:stdio
+```
+
+Setup uses Supabase with certificate verification enabled. Commerce tables live in the dedicated `houjicha_mcp` schema; group state lives in a project/region-specific orchestration schema. It does not launch a local database. The private `.reap/mcp.env` profile supplies sandbox/read-only defaults and a persistent encryption key. Exported values and `.env` take precedence; `REAP_ENV_FILE` explicitly selects another environment and disables the automatic local profile. Do not lose the encryption key while retaining encrypted commerce records.
+
+The protocol check starts the actual stdio MCP process and calls `group_buy` with `action: search_catalog`, exercising authentication identity, Supabase persistence, orchestration, our wrapper, and real Reap search/details. It exits nonzero on errors or an empty catalogue. The local identity is `mock_user_reuben`; no Reap user is created. Read-only mode blocks mutation tools and disables commerce recovery dispatch. Remote HTTP still requires OAuth configuration.
+
+Wrapper journals and SQLite variant mappings live under `.reap/groups/<scope>/` (override the parent with `GROUP_BUY_REAP_DATA_DIR`). This process owns an exclusive journal lock; run one MCP process per scope and keep its files on persistent storage. The wrapper catalogue uses a new orchestration schema scope so old imported catalogue IDs cannot be mixed into existing groups. The legacy PostgreSQL catalogue adapter remains only for compatibility tests.
+
+Group payments and trusted consent remain unavailable. Reap aggregate-only quotes cannot authorize participant allocations, so this integration does not enable group creation, funding or checkout.

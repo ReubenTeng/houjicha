@@ -14,8 +14,8 @@ export class Database {
 
   constructor(readonly config: Config) {
     this.pool = new Pool({
-      connectionString: config.databaseUrl,
-      ...(config.databaseSsl ? { ssl: { rejectUnauthorized: true } } : {}),
+      ...config.databaseConnection,
+      options: `-c search_path=${config.databaseSchema}`,
       max: 12, connectionTimeoutMillis: 5000, idleTimeoutMillis: 30000,
       statement_timeout: 30000, application_name: "reap-mcp",
     });
@@ -46,7 +46,7 @@ export class Database {
   async locked<T>(key: string, work: (client: PoolClient) => Promise<T>): Promise<T> {
     const existing = this.context.getStore();
     const client = existing ?? await this.pool.connect();
-    const lockKey = key === "schema-migrations" ? "reap-mcp:schema-migrations" : `${this.config.namespace}:${key}`;
+    const lockKey = key === "schema-migrations" ? `reap-mcp:${this.config.databaseSchema}:schema-migrations` : `${this.config.namespace}:${key}`;
     let locked = false;
     try {
       const result = await client.query<{ locked: boolean }>("SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked", [lockKey]);
@@ -105,6 +105,7 @@ export class Database {
   }
 
   async migrate(): Promise<void> {
+    if (this.config.databaseSchema !== "public") await this.query(`CREATE SCHEMA IF NOT EXISTS "${this.config.databaseSchema}"`);
     await this.locked("schema-migrations", async (client) => {
       await client.query("CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())");
       const directory = new URL("../../migrations/", import.meta.url);

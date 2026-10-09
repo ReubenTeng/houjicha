@@ -26,7 +26,9 @@
     "orchestration:demo": "tsx src/orchestration/demo-cli.ts",
     "db:setup": "node --env-file-if-exists=.env --import tsx scripts/setup-supabase.ts",
     "reap:catalog": "node --env-file-if-exists=.env --import tsx src/reap/catalog-run.ts",
-    "reap:orchestration-demo": "node --env-file-if-exists=.env --import tsx src/reap/orchestration-run.ts"
+    "reap:orchestration-demo": "node --env-file-if-exists=.env --import tsx src/reap/orchestration-run.ts",
+    "setup:mcp-sandbox": "node --env-file-if-exists=.env --import tsx scripts/setup-mcp-sandbox.ts",
+    "mcp:catalog-check": "node --env-file-if-exists=.env --import tsx scripts/check-mcp-catalog.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/node": "2.1.0",

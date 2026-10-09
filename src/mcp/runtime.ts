@@ -9,7 +9,7 @@ import { MockProvider } from "./providers/mock.js";
 import { ReapProvider } from "./providers/reap.js";
 
 export function localIdentity(config: Config): Identity {
-  return { issuer: "urn:reap-mcp:local", subject: config.localIdentity.subject, scopes: [...scopes],
+  return { issuer: "urn:reap-mcp:local", subject: config.localIdentity.subject, scopes: config.readOnly ? ["commerce:read"] : [...scopes],
     email: config.localIdentity.email, emailVerified: config.localIdentity.emailVerified };
 }
 
@@ -19,7 +19,8 @@ export async function createRuntime(config: Config) {
   catch (error) { await db.close(); throw error; }
   const provider = config.mode === "mock" ? new MockProvider(db, config) : new ReapProvider(config);
   const commerce = new Commerce(db, provider, config);
-  const groups = createGroupRuntime(commerce);
+  let groups;
+  try { groups = await createGroupRuntime(commerce); } catch (error) { await db.close(); throw error; }
   let running = false;
   let work: Promise<void> = Promise.resolve();
   const tick = () => {
@@ -30,9 +31,9 @@ export async function createRuntime(config: Config) {
       log("recovery_unavailable", { code: failure.code, trace_id: failure.traceId });
     }).finally(() => { running = false; });
   };
-  const timer = setInterval(tick, config.recoveryIntervalMs);
-  timer.unref();
-  tick();
+  const timer = config.readOnly ? undefined : setInterval(tick, config.recoveryIntervalMs);
+  timer?.unref();
+  if (!config.readOnly) tick();
   let closed = false;
   return { db, commerce, groups: groups.tool, async close() {
     if (closed) return;
