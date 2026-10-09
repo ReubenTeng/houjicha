@@ -76,10 +76,12 @@ describe("createBot", () => {
 
     await bot.handleUpdate(commandUpdate("/start"));
     await bot.handleUpdate(commandUpdate("/start@foundation_bot"));
+    await bot.handleUpdate(commandUpdate("/tester"));
 
     expect(sent).toEqual([
       { chatId: 42, text: START_MESSAGE },
       { chatId: 42, text: START_MESSAGE },
+      { chatId: 42, text: "hello 2023-11-14T22:13:20.000Z" },
     ]);
     expect(lines.join("\n")).not.toContain("UniquePersonName");
     expect(lines.join("\n")).not.toContain(TOKEN);

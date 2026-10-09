@@ -1,6 +1,6 @@
 # Houjicha
 
-Long-polling Telegram bot. It answers `/start` with `Bot is online.` Group-buying commands are not part of this slice.
+Long-polling Telegram bot. It answers `/start` with `Bot is online.` and `/tester` with `hello` plus the time that message was sent. Group-buying commands are not part of this slice.
 
 ## Requirements
 
@@ -33,7 +33,7 @@ npm run dev
 
 Logs are single-line JSON. Info goes to stdout, errors to stderr. Lifecycle logs include the bot username. They do not include message text, names, or the token.
 
-Open a private chat with the bot and send `/start`.
+Open a private chat with the bot and send `/start` or `/tester`.
 
 Ctrl+C, or `SIGTERM`, stops polling and then exits.
 

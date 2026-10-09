@@ -22,6 +22,11 @@ export function createBot(
     await ctx.reply(START_MESSAGE);
   });
 
+  bot.command("tester", async (ctx) => {
+    const sentAt = new Date(ctx.msg.date * 1000).toISOString();
+    await ctx.reply(`hello ${sentAt}`);
+  });
+
   bot.catch((botError) => {
     logger.error("handler_error", describeHandlerError(botError.error));
   });
