@@ -42,7 +42,8 @@ export class GroupBuyTool {
       };
     } catch (error) {
       const failure = error instanceof DomainError ? new AppError(error.code, `Group action rejected: ${error.code}. Read the current group state before changing the request.`, error.retryable)
-        : error instanceof z.ZodError ? new AppError("INVALID_INPUT", "Use the documented group action and its exact fields. Identity and approval assertions are not accepted.") : asAppError(error);
+        : error instanceof z.ZodError ? new AppError("INVALID_INPUT", "Use the documented group action and its exact fields. Identity and approval assertions are not accepted.")
+        : error instanceof AppError ? asAppError(error) : new AppError("GROUP_BACKEND_UNAVAILABLE", "The group backend could not complete the request. Check its connection and schema, then read current state before retrying the same command ID.", true);
       result = { ok: false, mode: this.config.mode, simulated: this.config.mode === "mock", status: failure.code,
         data: error instanceof DomainError && error.currentVersion !== undefined ? { currentVersion: error.currentVersion } : null,
         next_action: { type: failure.code.endsWith("UNAVAILABLE") ? "CONNECT_BACKEND" : "REVIEW_REQUEST", message: failure.message },

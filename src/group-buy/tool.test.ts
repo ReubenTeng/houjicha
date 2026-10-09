@@ -86,6 +86,19 @@ describe("group_buy boundary", () => {
     expect(result.error?.code).toBe("FORBIDDEN");
     expect(db.actor).not.toHaveBeenCalled();
   });
+  it("reports database failures without leaking connection details", async () => {
+    const { world, tool } = fixture();
+    vi.spyOn(world.store, "groups").mockRejectedValueOnce(new Error("secret database credentials"));
+    const result = await tool.call({ action: "get_my_updates" }, identity);
+    expect(result.error?.code).toBe("GROUP_BACKEND_UNAVAILABLE");
+    expect(JSON.stringify(result)).not.toContain("secret database credentials");
+  });
+  it("keeps opaque command IDs intact and rejects unknown nested fields", () => {
+    const valid = { action: "cancel_group_buy", groupBuyId: "group", metadata: { commandId: " command ", expectedVersion: 1 } };
+    expect(groupInputSchema.parse(valid)).toEqual(valid);
+    expect(groupInputSchema.safeParse({ ...valid, metadata: { ...valid.metadata, userId: "someone" } }).success).toBe(false);
+    expect(groupInputSchema.safeParse({ ...valid, user_approved: true }).success).toBe(false);
+  });
   it("is callable without a configured backend and reports why", async () => {
     const { db } = fixture();
     const tool = new GroupBuyTool(config, db);
