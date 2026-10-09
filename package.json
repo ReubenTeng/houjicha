@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "scripts": {
     "dev": "tsx src/telegram/index.ts",
@@ -14,7 +14,8 @@
     "test": "vitest run",
     "docs:generate": "tsx scripts/build-api-docs.ts",
     "docs:check": "tsc -p tsconfig.docs.json && tsx scripts/build-api-docs.ts --check",
-    "docs:serve": "tsx scripts/serve-docs.ts"
+    "docs:serve": "tsx scripts/serve-docs.ts",
+    "orchestration:demo": "tsx src/orchestration/demo-cli.ts"
   },
   "dependencies": {
     "grammy": "^1.35.0"
