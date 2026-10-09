@@ -11,13 +11,19 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/telegram/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "docs:generate": "tsx scripts/build-openapi.ts",
+    "docs:check": "tsc -p tsconfig.docs.json && tsx scripts/build-openapi.ts --check && tsx scripts/validate-openapi.ts",
+    "docs:serve": "tsx scripts/serve-docs.ts"
   },
   "dependencies": {
     "grammy": "^1.35.0"
   },
   "devDependencies": {
+    "@apidevtools/swagger-parser": "^13.1.0",
     "@types/node": "^22.16.0",
+    "swagger-ui-dist": "^5.33.1",
+    "ts-json-schema-generator": "^2.9.0",
     "tsx": "^4.20.3",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
