@@ -1,14 +1,48 @@
 # Houjicha
 
-Long-polling Telegram bot. It answers `/start` with `Bot is online.` and `/tester` with `hello` plus the time that message was sent. Group-buying commands are not part of this slice.
+MCP server for group buying. An external AI agent searches merchants and manages group buys by calling tools on this server. The server is a thin adapter over the orchestration backend. It does not run the group-buy engine, take payments, or host its own model.
 
-## Requirements
+MCP is the interface this project is building. The adapter is specified and not implemented yet. The only runnable code today is a Telegram prototype that answers two commands. A later Telegram adapter can call the same tools. Group-buy behavior does not depend on Telegram chat IDs or message templates.
+
+## Architecture
+
+- **MCP** exposes orchestration operations as tools. Identity comes from the host, not from a user id supplied by the model. Proposed tools, auth rules, and acceptance checks are in the [MCP handoff](docs/plans/mcp-handoff/README.md).
+- **Orchestration** owns group-buy state, catalog search, matching, membership, approvals, deadlines, allocation, and domain events.
+- **Payment** owns Reap integration, participant funding, merchant checkout, and reconciliation. The internal Reap wrapper contract is documented below.
+- **Telegram** is an optional adapter. The current process only proves the bot stays up.
+
+## Status
+
+| Piece | State |
+| --- | --- |
+| MCP tools and contract | Proposed. See the [MCP handoff](docs/plans/mcp-handoff/README.md). |
+| Orchestration backend | Not in this repo. Build the adapter against a labeled mock until it exists. |
+| Payment / Reap wrapper | Contract and generated reference only. |
+| Telegram bot | Runnable prototype. `/start` and `/tester` only. |
+
+## MCP handoff
+
+Start with [docs/plans/mcp-handoff/README.md](docs/plans/mcp-handoff/README.md).
+
+- [Product rules](docs/plans/mcp-handoff/product-context.md)
+- [Shared terms](docs/plans/mcp-handoff/glossary.md)
+- [Integration contract](docs/plans/mcp-handoff/integration-contract.md)
+- [Agent usage notes](docs/plans/mcp-handoff/agent-usage.md)
+- [Acceptance checks](docs/plans/mcp-handoff/acceptance-checks.md)
+
+The contract lists tools such as `search_catalog`, `find_group_buys`, `join_group_buy`, and `get_my_updates`. Those names are a proposal. No MCP tool debits a wallet or starts its own checkout.
+
+## Current prototype: Telegram bot
+
+This slice answers `/start` with `Bot is online.` and `/tester` with `hello` plus the time that message was sent. Group-buying commands are not part of it.
+
+### Requirements
 
 - Node.js 22 or newer
 - npm 10 or newer
 - A bot token from [@BotFather](https://t.me/BotFather)
 
-## Setup
+### Setup
 
 ```bash
 npm install
@@ -25,7 +59,7 @@ The token is a BotFather string such as `123456789:AA...`: digits, a colon, then
 
 The bot reads `.env` from the current directory when it starts. Existing environment variables win. A missing `.env` is fine if `TELEGRAM_BOT_TOKEN` is already exported.
 
-## Run
+### Run
 
 ```bash
 npm run dev
@@ -44,7 +78,7 @@ npm start
 
 `npm run dev` and `npm start` exit with status 1 if the token is missing or malformed.
 
-## Checks
+### Checks
 
 ```bash
 npm test
@@ -53,9 +87,16 @@ npm run typecheck
 
 ## Reap wrapper API reference
 
-The orchestration ↔ Reap boundary is defined in TypeScript. The documentation
+The provider-facing Reap adapter boundary is defined in TypeScript. The documentation
 uses expandable service functions, argument tables, return types and examples.
 It describes direct calls to an injected `ReapWrapper` TypeScript interface.
+
+The newer [MCP handoff](docs/plans/mcp-handoff/README.md) describes the outer
+orchestration interface; the [payment-service handoff](docs/plans/payment-service-handoff/README.md)
+describes a group-payment workflow above the provider adapter. Neither is implemented.
+The old external-card purchase followed by virtual-credit debits does not satisfy
+the newer participant-funded-before-checkout requirement. Read the reconciliation
+section in the engineering handoff before implementing either payment sequence.
 
 ```bash
 npm run docs:generate

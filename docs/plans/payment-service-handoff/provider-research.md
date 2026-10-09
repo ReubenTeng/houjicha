@@ -44,7 +44,7 @@ Source:
 
 ### F4: Agentic checkout remains single-enrollment
 
-The checkout request contains one `quoteId` and one `enrollmentId`, not a list of participant contributions. Reap-issued cards can be enrolled with `source: REAP_CARD` and a `cardId`, subject to card compatibility and hosted setup requirements.
+The checkout request contains one `quoteId` and one `enrollmentId`, not a list of participant contributions. The setup guide shows `source: REAP_CARD` with a `cardId`, but the reviewed create-enrollment endpoint marks `REAP_CARD` and `BIN_SPONSOR` as coming soon. This matches the earlier wrapper review: neither source is verified available for this project. A schema branch or setup example is not evidence of enablement. The documented EXTERNAL hosted flow does not itself establish a wallet-backed purchaser card.
 
 Multiple wallets do not prove native split payment. Creating one checkout per participant is not an established substitute for a single group merchant order.
 
@@ -53,6 +53,15 @@ The standard Agentic test cards never move money. Verify whether this team's wal
 Sources:
 - https://docs.reap.global/api-reference/agentic/create-checkout.md
 - https://docs.reap.global/agentic-payments/setup.md
+
+The earlier wrapper's virtual `WITHDRAWAL` records a Program-Funded virtual-credit debit; it does not transfer crypto or reimburse an external-card purchaser. `SETTLEMENT` also reduces that account's card debt and is not a generic group contribution operation. Neither can be substituted for the candidate collection flow without a separately verified money model.
+
+The reviewed Agentic quote returns aggregate item subtotal and a total breakdown, not verified checkout line prices. The C4 requirement for exact participant item attribution must therefore remain blocked when item-level evidence is missing, unless a separately approved allocation policy is adopted. Do not fill the gap with catalog prices labeled final.
+
+Sources for these constraints:
+- https://docs.reap.global/api-reference/agentic/create-enrollment
+- https://docs.reap.global/api-reference/agentic/create-quote
+- https://docs.reap.global/api-reference/virtual-asset-postings/create-posting
 
 ### F5: Kwal also supports separate participants, but split checkout is not documented
 
