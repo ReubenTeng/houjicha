@@ -15,7 +15,8 @@
     "docs:generate": "tsx scripts/build-api-docs.ts",
     "docs:check": "tsc -p tsconfig.docs.json && tsx scripts/build-api-docs.ts --check",
     "docs:serve": "tsx scripts/serve-docs.ts",
-    "orchestration:demo": "tsx src/orchestration/demo-cli.ts"
+    "orchestration:demo": "tsx src/orchestration/demo-cli.ts",
+    "db:setup": "node --env-file-if-exists=.env --import tsx scripts/setup-supabase.ts"
   },
   "dependencies": {
     "grammy": "^1.35.0",
